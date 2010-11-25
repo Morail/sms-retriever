@@ -16,12 +16,13 @@
 
 import sys
 import urllib2 as ul
-import logging
 import re
 import htmlentitydefs
 
 from datetime import datetime
 from BeautifulSoup import BeautifulSoup
+from twiggy import log
+from twiggy_setup import twiggy_setup
 
 
 class Retriever(object):
@@ -29,35 +30,37 @@ class Retriever(object):
     def __init__(self, url, mpp=1, df='%y/%m/%d', regex='.'):
         self.top = mpp
         self.date_format = df
-        self.counter, self.pagestart = 0, 0
+        self.counter, self.page_start = 0, 0
         self.base_url = url
         self.messages = {}
-        self.regex = regex
+        self.re = regex
+        self._log = log.name('process')
 
 
     def process(self):
     
         while True:
-            url = "%s?top=%d&pagestart=%d" % (self.base_url, 
-                                              self.top, self.pagestart)
-            
+            url = "%s?top=%d&pagestart=%d" % (self.base_url, self.top,
+                                              self.page_start)
+
+            self._log.info('reading from url {url}', url=url)
             html = BeautifulSoup(ul.urlopen(url))
     
             ## break while loop
             if not html:
-                logging.debug('Nothing returned from the given url, stopping this process')
+                self._log.fields(Messages=self.counter).debug('Nothing returned from the given url, stopping this process')
                 break
     
-            list_ = html.findAll('div', id=re.compile(self.regex))
+            list_ = html.findAll('div', id=re.compile(self.re))
     
             if not len(list_):
-                logging.debug('No more messages found, stopping this process')
+                self._log.fields(Messages=self.counter).debug('Nothing returned from the given url, stopping this process')
                 break
     
             for d in list_:
                 id = d['id'].split('_')[-1]
 
-                if not id or id in messages:
+                if not id or id in self.messages:
                     continue
 
                 date_ = datetime.strptime(d.strong.string, self.date_format)
@@ -69,9 +72,10 @@ class Retriever(object):
                 self.counter += 1
     
             ## incrementing pagestart
-            self.pagestart += self.top
+            self.page_start += self.top
     
-        logging.info('Messages: %d' % (self.counter,))
+        self._log.info('Messages found: {}', self.counter)
+
 
 
 ## Thanks to: http://effbot.org/zone/re-sub.htm#unescape-html
@@ -96,22 +100,20 @@ def unescape(text):
         return text # leave as is
     return re.sub("&#?\w+;", fixup, text)
 
+
 def main():
 
-    logging.basicConfig(#filename="sms-retriever.log",
-                                stream=sys.stderr,
-                                level=logging.DEBUG)
+    ## Twiggy logger setup
+    twiggy_setup()
+    log.name('main').info('-------------------- START --------------------')
 
-    logging.info('START')
-    
     url = 'http://www.rtl.it/ajaxreturn/sms_list.php'
     df = '%d.%m.%Y %H:%M:%S'
     regex = 'sms_\d+'
     
     r = Retriever(url=url, mpp=15, regex=regex, df=df)
     r.process()
-
-    logging.info('STOP')
+    log.name('main').info('-------------------- STOP --------------------')
 
 if __name__ == "__main__":
     main()
