@@ -25,6 +25,13 @@ from twiggy_setup import twiggy_setup
 from sqlalchemy import *
 
 
+class Message(object):
+    def __init__(self, id_, text, date_):
+        self.id = id_
+        self.text = text
+        self.date = date_
+
+
 class Retriever(object):
     
     def __init__(self, url, mpp=1, df='%y/%m/%d', regex='.'):
@@ -32,13 +39,13 @@ class Retriever(object):
         self.date_format = df
         self.counter, self.page_start = 0, 0
         self.base_url = url
-        self.messages = {}
+        self.messages = []
         self.re = regex
         self._log = log.name('process')
         self.db = 'sms.db'
 
         ## database
-        events, self.connection = get_events_table()
+        events, self.connection = get_connector()
         self.insert = events.insert()
 
 
@@ -70,8 +77,8 @@ class Retriever(object):
 
                 date_ = dt.strptime(d.strong.string, self.date_format)
                 text= unescape(d.div.contents[-1])
-    
-                self.messages[id] = (text, date_)
+                    
+                self.messages.append(Message(id,text, date_))
 
                 ## updating message counter
                 self.counter += 1
@@ -85,8 +92,8 @@ class Retriever(object):
     def save(self):
 
         counter = 0
-        for k,v in self.messages.iteritems():
-            data = {'id': k, 'text': v[0], 'date': v[1]}
+        for m in self.messages:
+            data = {'id': m.id, 'text': m.text, 'date': m.date}
             try:
                 self.connection.execute(self.insert, data)
                 counter += 1
@@ -96,7 +103,7 @@ class Retriever(object):
         self._log.debug('Saved {} messages into the database', counter)
 
 
-def get_events_table():
+def get_connector():
     engine = create_engine('sqlite:///sms.db')
     metadata = MetaData()
     metadata.bind = engine
