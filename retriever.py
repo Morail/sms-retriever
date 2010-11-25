@@ -14,15 +14,15 @@
 ##########################################################################
 
 
-import sys
 import urllib2 as ul
 import re
 import htmlentitydefs
 
-from datetime import datetime
+from datetime import datetime as dt
 from BeautifulSoup import BeautifulSoup
 from twiggy import log
 from twiggy_setup import twiggy_setup
+from sqlalchemy import *
 
 
 class Retriever(object):
@@ -35,6 +35,11 @@ class Retriever(object):
         self.messages = {}
         self.re = regex
         self._log = log.name('process')
+        self.db = 'sms.db'
+
+        ## database
+        events, self.connection = get_events_table()
+        self.insert = events.insert()
 
 
     def process(self):
@@ -63,7 +68,7 @@ class Retriever(object):
                 if not id or id in self.messages:
                     continue
 
-                date_ = datetime.strptime(d.strong.string, self.date_format)
+                date_ = dt.strptime(d.strong.string, self.date_format)
                 text= unescape(d.div.contents[-1])
     
                 self.messages[id] = (text, date_)
@@ -77,6 +82,35 @@ class Retriever(object):
         self._log.info('Messages found: {}', self.counter)
 
 
+    def save(self):
+
+        counter = 0
+        for k,v in self.messages.iteritems():
+            data = {'id': k, 'text': v[0], 'date': v[1]}
+            try:
+                self.connection.execute(self.insert, data)
+                counter += 1
+            except:
+                pass
+
+        self._log.debug('Saved {} messages into the database', counter)
+
+
+def get_events_table():
+    engine = create_engine('sqlite:///sms.db')
+    metadata = MetaData()
+    metadata.bind = engine
+
+    table = Table('messages', metadata,
+                   Column('id', Integer, primary_key=True),
+                   Column('text', String()),
+                   Column('date', DateTime)
+                   )
+    metadata.create_all(engine) # create the table
+
+    conn = engine.connect()
+
+    return (table, conn)
 
 ## Thanks to: http://effbot.org/zone/re-sub.htm#unescape-html
 def unescape(text):
@@ -113,6 +147,7 @@ def main():
     
     r = Retriever(url=url, mpp=15, regex=regex, df=df)
     r.process()
+    r.save()
     log.name('main').info('-------------------- STOP --------------------')
 
 if __name__ == "__main__":
