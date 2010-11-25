@@ -5,3 +5,4 @@ SMS are downloaded from the web page of the radio.
 ## Dependencies:
 
  * BeautifulSoup: http://www.crummy.com/software/BeautifulSoup/
+ * Twiggy: http://twiggy.wearpants.org/
