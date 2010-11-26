@@ -14,7 +14,7 @@
 ##########################################################################
 
 
-import urllib2 as ul
+import urllib2
 import re
 import htmlentitydefs
 
@@ -34,7 +34,7 @@ class Message(object):
 
 class Retriever(object):
     
-    def __init__(self, url, mpp=1, df='%y/%m/%d', regex='.'):
+    def __init__(self, url, mpp=1, df='%y/%m/%d', regex='.', db=None):
         self.top = mpp
         self.date_format = df
         self.counter, self.page_start = 0, 0
@@ -42,10 +42,9 @@ class Retriever(object):
         self.messages = []
         self.re = regex
         self._log = log.name('process')
-        self.db = 'sms.db'
 
         ## database
-        events, self.connection = get_connector()
+        events, self.connection = get_connector(db)
         self.insert = events.insert()
 
 
@@ -55,8 +54,13 @@ class Retriever(object):
             url = "%s?top=%d&pagestart=%d" % (self.base_url, self.top,
                                               self.page_start)
 
-            self._log.info('reading from url {url}', url=url)
-            html = BeautifulSoup(ul.urlopen(url))
+            self._log.debug('reading from url {url}', url=url)
+
+            try:
+                html = BeautifulSoup(urllib2.urlopen(url))
+            except urllib2.HTTPError:
+                self._log.error('Cannot connect to the web page')
+                return
     
             ## break while loop
             if not html:
@@ -91,6 +95,10 @@ class Retriever(object):
 
     def save(self):
 
+        ## no sms to be saved
+        if not self.counter:
+            return
+
         counter = 0
         for m in self.messages:
             data = {'id': m.id, 'text': m.text, 'date': m.date}
@@ -98,13 +106,14 @@ class Retriever(object):
                 self.connection.execute(self.insert, data)
                 counter += 1
             except:
+                ## id duplicated
                 pass
 
-        self._log.debug('Saved {} messages into the database', counter)
+        self._log.info('Saved {} messages into the database', counter)
 
 
-def get_connector():
-    engine = create_engine('sqlite:///sms.db')
+def get_connector(db_name):
+    engine = create_engine('sqlite:///' + db_name)
     metadata = MetaData()
     metadata.bind = engine
 
@@ -112,7 +121,8 @@ def get_connector():
                    Column('id', Integer, primary_key=True),
                    Column('text', String()),
                    Column('date', DateTime)
-                   )
+            )
+
     metadata.create_all(engine) # create the table
 
     conn = engine.connect()
@@ -142,20 +152,41 @@ def unescape(text):
     return re.sub("&#?\w+;", fixup, text)
 
 
+def create_option_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(description='Process a graph file running a longitudinal analysis over it.')
+
+    ## optional parameters
+    p.add_argument('-u', '--url', metavar="URL", help="web URL", default="http://www.rtl.it/ajaxreturn/sms_list.php")
+    p.add_argument('-d', '--date-format', help='parsed date format (default: %(default)s)', default='%d.%m.%Y %H:%M:%S')
+    p.add_argument('-m', '--messages-per-page', help='number of sms per page for pagination (default: %(default)s)',
+                   type=int, default=15)
+    p.add_argument('-r', '--regex', help='regex used to identify div containing sms (default: %(default)s)', default='sms_\d+')
+    ## positional arguments
+    p.add_argument('db_name', help="database file name", metavar="DB_FILE")
+
+    return p
+
 def main():
 
     ## Twiggy logger setup
     twiggy_setup()
-    log.name('main').info('-------------------- START --------------------')
+    log.name('main').debug('-------------------- START --------------------')
 
-    url = 'http://www.rtl.it/ajaxreturn/sms_list.php'
-    df = '%d.%m.%Y %H:%M:%S'
-    regex = 'sms_\d+'
+    op = create_option_parser()
+    args = op.parse_args()
+
+    url = args.url
+    df = args.date_format
+    regex = args.regex
+    db_name = args.db_name
+    mpp = args.messages_per_page
     
-    r = Retriever(url=url, mpp=15, regex=regex, df=df)
+    r = Retriever(url=url, mpp=mpp, regex=regex, df=df, db=db_name)
     r.process()
     r.save()
-    log.name('main').info('-------------------- STOP --------------------')
+    log.name('main').debug('-------------------- STOP --------------------')
 
 if __name__ == "__main__":
     main()
