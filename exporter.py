@@ -22,45 +22,45 @@ from sqlalchemy import *
 from collector import get_connector
 from csv import DictWriter, QUOTE_ALL
 
+from message import Message
 
-def get_data():
+def get_data(db):
 
-    table, conn = get_connector('sms.db')
+    table, conn = get_connector(db)
     s = table.select()
     rs = s.execute()
 
+    counter = 0
     for row in rs:
-        yield row
+        counter += 1
+        yield Message(id_=row[0], text=row[1].encode('utf-8'), date_=row[2])
 
-def prepare_data(row):
-    dict_ = {
-        'id': row[0],
-        'text': row[1].encode("utf-8"),
-        'date': row[2],
-        'year': row[2].year,
-        'month': row[2].month,
-        'day': row[2].day,
-        'hour': row[2].hour,
-        'minute': row[2].minute,
-        'second': row[2].second,
-        'number of words': len(row[1].split(' ')),
-        'number of characters': len(row[1])
-    }
+    log.name('data_getter').info('Retrieved {} messages from db', counter)
 
-    return dict_
+def export_data(fn, db):
 
-def export_data():
+    log.name('exporter').debug('Exporting data')
+    writer = DictWriter(open(fn, 'w'), fieldnames=Message.keys_, delimiter=',',
+                                    quotechar='"', quoting=QUOTE_ALL)
 
-    keys_ = ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute', 'second',
-             'number of words', 'number of characters']
-    csv_writer = DictWriter(open('test.csv', 'w'),
-                                    fieldnames = keys_, delimiter=',',
-                                    quotechar='"', quoting=QUOTE_ALL
-                                )
+    writer.writeheader()
+    log.name('exporter').debug('Preparing and saving data')
+    writer.writerows([m.prepare_data() for m in get_data(db)])
+    log.name('exporter').debug('Data exported and saved into {file_name}', file_name=fn)
 
-    csv_writer.writeheader()
-    csv_writer.writerows([prepare_data(row) for row in get_data()])
 
+def create_option_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(description='Exports messages to a csv file')
+
+    ## optional parameters
+    # ...
+    ## positional arguments
+    p.add_argument('file_name', help="csv file name", metavar="CSV_FILE")
+    p.add_argument('db_name', help="database file name", metavar="DB_FILE")
+
+    return p
 
 def main():
 
@@ -68,7 +68,10 @@ def main():
     twiggy_setup()
     log.name('main').info('-------------------- START --------------------')
 
-    export_data()
+    op = create_option_parser()
+    args = op.parse_args()
+
+    export_data(args.file_name, args.db_name)
     
     log.name('main').info('-------------------- STOP --------------------')
 

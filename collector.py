@@ -24,13 +24,7 @@ from twiggy import log
 from twiggy_setup import twiggy_setup
 from sqlalchemy import *
 
-
-class Message(object):
-    def __init__(self, id_, text, date_):
-        self.id = id_
-        self.text = text
-        self.date = date_
-
+from message import Message
 
 class Retriever(object):
     
@@ -155,7 +149,7 @@ def unescape(text):
 def create_option_parser():
     import argparse
 
-    p = argparse.ArgumentParser(description='Process a graph file running a longitudinal analysis over it.')
+    p = argparse.ArgumentParser(description='Retrieves sms from a website')
 
     ## optional parameters
     p.add_argument('-u', '--url', metavar="URL", help="web URL", default="http://www.rtl.it/ajaxreturn/sms_list.php")
