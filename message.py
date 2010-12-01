@@ -16,13 +16,6 @@
 
 class Message(object):
 
-    keys_ =  ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute', 'second',
-             'number of words', 'number of characters']
-
-    @property
-    def keys(self):
-        return self.keys_
-
     def __init__(self, id_, text, date_):
         self.id = id_
         self.text = text
@@ -34,18 +27,3 @@ class Message(object):
             self.date.strftime('%Y-%m-%d %H:%M:%s'),
             self.text
         )
-
-    def prepare_data(self):
-        return {
-           'id': self.id,
-            'text': self.text,
-            'date': self.date,
-            'year': self.date.year,
-            'month': self.date.month,
-            'day': self.date.day,
-            'hour': self.date.hour,
-            'minute': self.date.minute,
-            'second': self.date.second,
-            'number of words': len(self.text.split(' ')),
-            'number of characters': len(self.text)
-        }

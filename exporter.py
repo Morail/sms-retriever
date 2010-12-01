@@ -37,15 +37,36 @@ def get_data(db):
 
     log.name('data_getter').info('Retrieved {} messages from db', counter)
 
+def prepare_data(message):
+   return {
+       'id': message.id,
+       'text': message.text,
+       'date': message.date,
+       'year': message.date.year,
+       'month': message.date.month,
+       'day': message.date.day,
+       'hour': message.date.hour,
+       'minute': message.date.minute,
+       'second': message.date.second,
+       'number of words': len(message.text.split(' ')),
+       'number of characters': len(message.text),
+       'number of characters without spaces': len(message.text.replace(' ', ''))
+   }
+
 def export_data(fn, db):
 
     log.name('exporter').debug('Exporting data')
-    writer = DictWriter(open(fn, 'w'), fieldnames=Message.keys_, delimiter=',',
+    
+    ## fieldnames
+    keys_ =  ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute', 'second',
+             'number of words', 'number of characters', 'number of characters without spaces']
+    
+    writer = DictWriter(open(fn, 'w'), fieldnames=keys_, delimiter=',',
                                     quotechar='"', quoting=QUOTE_ALL)
 
     writer.writeheader()
     log.name('exporter').debug('Preparing and saving data')
-    writer.writerows([m.prepare_data() for m in get_data(db)])
+    writer.writerows([prepare_data(m) for m in get_data(db)])
     log.name('exporter').debug('Data exported and saved into {file_name}', file_name=fn)
 
 
