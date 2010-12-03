@@ -23,23 +23,25 @@ from BeautifulSoup import BeautifulSoup
 from twiggy import log
 from twiggy_setup import twiggy_setup
 from sqlalchemy import *
+from sqlalchemy.orm import sessionmaker, mapper
+from sqlalchemy.exc import IntegrityError
 
 from message import Message
 
-class Retriever(object):
+class Collector(object):
     
     def __init__(self, url, mpp=1, df='%y/%m/%d', regex='.', db=None):
         self.top = mpp
         self.date_format = df
-        self.counter, self.page_start = 0, 0
+        self.page_start = 0
         self.base_url = url
-        self.messages = []
+        self.msg = []
         self.re = regex
-        self._log = log.name('process')
+        self._log = log.name('Collector')
 
         ## database
-        events, self.connection = get_connector(db)
-        self.insert = events.insert()
+        self.table, self.connection = get_connector(db)
+        self.insert = self.table.insert()
 
 
     def process(self):
@@ -54,54 +56,60 @@ class Retriever(object):
                 html = BeautifulSoup(urllib2.urlopen(url))
             except urllib2.HTTPError:
                 self._log.error('Cannot connect to the web page')
-                return
+                break
     
             ## break while loop
             if not html:
-                self._log.fields(Messages=self.counter).debug('Nothing returned from the given url, stopping this process')
+                self._log.fields(Messages=len(self.msg)).debug('Nothing returned from the given url, stopping this process')
                 break
     
             list_ = html.findAll('div', id=re.compile(self.re))
     
             if not len(list_):
-                self._log.fields(Messages=self.counter).debug('Nothing returned from the given url, stopping this process')
+                self._log.fields(Messages=len(self.msg)).debug('Nothing returned from the given url, stopping this process')
                 break
     
             for d in list_:
                 id = d['id'].split('_')[-1]
 
-                if not id or id in self.messages:
+                if not id or id in self.msg:
                     continue
 
                 date_ = dt.strptime(d.strong.string, self.date_format)
                 text= unescape(d.div.contents[-1])
                     
-                self.messages.append(Message(id,text, date_))
-
-                ## updating message counter
-                self.counter += 1
+                self.msg.append(Message(id, text, date_))
     
             ## incrementing pagestart
             self.page_start += self.top
     
-        self._log.info('Messages found: {}', self.counter)
+        self._log.info('Messages found: {}',len(self.msg))
+
+        ## save results
+        self.save()
 
 
     def save(self):
 
-        ## no sms to be saved
-        if not self.counter:
+        self._log.debug('Saving')
+        ## no sms to be saved, return!
+        if not len(self.msg):
             return
-
+        
+        Session = sessionmaker()
+        session = Session(bind=self.connection)           
+        
         counter = 0
-        for m in self.messages:
-            data = {'id': m.id, 'text': m.text, 'date': m.date}
+               
+        for m in self.msg:
             try:
-                self.connection.execute(self.insert, data)
+                session.merge(m)
+                session.commit()
                 counter += 1
-            except:
-                ## id duplicated
-                pass
+            except IntegrityError, e:
+                self._log.error(e)
+            
+        session.close()
 
         self._log.info('Saved {} messages into the database', counter)
 
@@ -116,14 +124,16 @@ def get_connector(db_name):
                    Column('text', String()),
                    Column('date', DateTime)
             )
+    
+    mapper(Message, table)
 
     metadata.create_all(engine) # create the table
-
     conn = engine.connect()
 
     return (table, conn)
 
-## Thanks to: http://effbot.org/zone/re-sub.htm#unescape-html
+## unescape html characters
+## Retrieved here: http://effbot.org/zone/re-sub.htm#unescape-html
 def unescape(text):
     def fixup(m):
         text = m.group(0)
@@ -177,9 +187,8 @@ def main():
     db_name = args.db_name
     mpp = args.messages_per_page
     
-    r = Retriever(url=url, mpp=mpp, regex=regex, df=df, db=db_name)
-    r.process()
-    r.save()
+    c = Collector(url=url, mpp=mpp, regex=regex, df=df, db=db_name)
+    c.process()
     log.name('main').debug('-------------------- STOP --------------------')
 
 if __name__ == "__main__":

@@ -18,42 +18,58 @@ from datetime import datetime as dt
 from twiggy import log
 from twiggy_setup import twiggy_setup
 from sqlalchemy import *
+from sqlalchemy.orm import sessionmaker, mapper
 
 from collector import get_connector
 from csv import DictWriter, QUOTE_ALL
 
 from message import Message
 
-def get_data(db):
+def get_data(db, start, end):
 
-    table, conn = get_connector(db)
-    s = table.select()
-    rs = s.execute()
+    messages, conn = get_connector(db)
+    
+    ## configure Session class with desired options
+    Session = sessionmaker()   
+    session = Session(bind=conn)
+    
+    q = session.query(Message)
+    
+    ## time range filter
+    if start:
+        q = q.filter(messages.c.date >= start)
+    if end:
+        q = q.filter(messages.c.date <= end)
+     
+    ## querying
+    for msg in q.all():
+        yield msg
+        
+    log.name('data_getter').info('Retrieved {} messages from db', q.count())
+    
+    ## Closing the session
+    session.close()
 
-    counter = 0
-    for row in rs:
-        counter += 1
-        yield Message(id_=row[0], text=row[1].encode('utf-8'), date_=row[2])
+def prepare_data(msg):
+       
+    id_, text, date_ = msg.id, msg.clean_text, msg.date   
+    
+    return {
+        'id': id_,
+        'text': text,
+        'date': date_,
+        'year': date_.year,
+        'month': date_.month,
+        'day': date_.day,
+        'hour': date_.hour,
+        'minute': date_.minute,
+        'second': date_.second,
+        'number of words': len(text.split(' ')),
+        'number of characters': len(text),
+        'number of characters without spaces': len(text.replace(' ', ''))
+    }
 
-    log.name('data_getter').info('Retrieved {} messages from db', counter)
-
-def prepare_data(message):
-   return {
-       'id': message.id,
-       'text': message.text,
-       'date': message.date,
-       'year': message.date.year,
-       'month': message.date.month,
-       'day': message.date.day,
-       'hour': message.date.hour,
-       'minute': message.date.minute,
-       'second': message.date.second,
-       'number of words': len(message.text.split(' ')),
-       'number of characters': len(message.text),
-       'number of characters without spaces': len(message.text.replace(' ', ''))
-   }
-
-def export_data(fn, db):
+def export_data(fn, db, start, end):
 
     log.name('exporter').debug('Exporting data')
     
@@ -66,7 +82,7 @@ def export_data(fn, db):
 
     writer.writeheader()
     log.name('exporter').debug('Preparing and saving data')
-    writer.writerows([prepare_data(m) for m in get_data(db)])
+    writer.writerows([prepare_data(m) for m in get_data(db, start, end)])
     log.name('exporter').debug('Data exported and saved into {file_name}', file_name=fn)
 
 
@@ -76,7 +92,8 @@ def create_option_parser():
     p = argparse.ArgumentParser(description='Exports messages to a csv file')
 
     ## optional parameters
-    # ...
+    p.add_argument('-s', '--start', metavar="YYYY/MM/DD-h:m:s", help="Date lower bound", default=None)
+    p.add_argument('-e', '--end', default=None, metavar="YYYY/MM/DD-h:m:s", help="Date upper bound")
     ## positional arguments
     p.add_argument('file_name', help="csv file name", metavar="CSV_FILE")
     p.add_argument('db_name', help="database file name", metavar="DB_FILE")
@@ -92,7 +109,12 @@ def main():
     op = create_option_parser()
     args = op.parse_args()
 
-    export_data(args.file_name, args.db_name)
+    df = '%Y/%m/%d-%H:%M:%S'
+
+    start = dt.strptime(args.start, df) if args.start else None
+    end = dt.strptime(args.end, df) if args.end else None
+
+    export_data(args.file_name, args.db_name, start, end)
     
     log.name('main').info('-------------------- STOP --------------------')
 
