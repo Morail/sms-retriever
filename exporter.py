@@ -51,10 +51,27 @@ def get_data(db, start, end):
     session.close()
 
 def prepare_data(msg):
-       
+
+    ## TODO
+    #    1
+    #    6
+    #    102
+    #
+    #    tt
+    #    nn
+    #    tvb
+    #    tvt***b
+    #    RTL (rtl)
+    #    !
+    #    ?
+    #    ,
+    #    .
+    #    +
+    #    Emoticon: :) :* :( :p
+
     id_, text, date_ = msg.id, msg.clean_text, msg.date   
     
-    return {
+    dict_ = {
         'id': id_,
         'text': text,
         'date': date_,
@@ -69,13 +86,20 @@ def prepare_data(msg):
         'number of characters without spaces': len(text.replace(' ', ''))
     }
 
+    for c in ['k', 'x', 'w']:
+        dict_.update({c: text.count(c)})
+
+    return dict_
+
 def export_data(fn, db, start, end):
 
     log.name('exporter').debug('Exporting data')
     
     ## fieldnames
     keys_ =  ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute', 'second',
-             'number of words', 'number of characters', 'number of characters without spaces']
+             'number of words', 'number of characters', 'number of characters without spaces',
+             'k', 'x', 'w'
+            ]
     
     writer = DictWriter(open(fn, 'w'), fieldnames=keys_, delimiter=',',
                                     quotechar='"', quoting=QUOTE_ALL)
