@@ -19,11 +19,19 @@ from twiggy import log
 from twiggy_setup import twiggy_setup
 from sqlalchemy import *
 from sqlalchemy.orm import sessionmaker, mapper
+import re
 
 from collector import get_connector
 from csv import DictWriter, QUOTE_ALL
 
 from message import Message
+
+## GLOBAL VARS
+SMS_PROPERTIES = ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute', 'second']
+TEXT_PROPERTIES = ['number of words', 'number of characters', 'number of characters without spaces']
+SINGLE_ENTITIES_ELEM = ['k', 'x', 'w', '!', '?', '+', ',', '.']
+COMPLEX_ENTITIES_ELEM = ['tt', 'nn', 'RTL', '1', '6', '102', 'xk', 'xke', 'cn']
+EMOTICONS = [':)', ':*', ':(', ':p']
 
 def get_data(db, start, end):
 
@@ -50,23 +58,11 @@ def get_data(db, start, end):
     ## Closing the session
     session.close()
 
-def prepare_data(msg):
+def prepare_message_data(msg):
 
     ## TODO
-    #    1
-    #    6
-    #    102
-    #
-    #    tt
-    #    nn
     #    tvb
     #    tvt***b
-    #    RTL (rtl)
-    #    !
-    #    ?
-    #    ,
-    #    .
-    #    +
     #    Emoticon: :) :* :( :p
 
     id_, text, date_ = msg.id, msg.clean_text, msg.date   
@@ -86,8 +82,18 @@ def prepare_data(msg):
         'number of characters without spaces': len(text.replace(' ', ''))
     }
 
-    for c in ['k', 'x', 'w']:
+    for c in SINGLE_ENTITIES_ELEM:
         dict_.update({c: text.count(c)})
+
+    for elem in COMPLEX_ENTITIES_ELEM:
+        dict_.update({
+            elem: len(re.findall('(?:^|[^\w\d])(%s)(?=$|[^\w\d])' % (elem,), text, re.I))
+        })
+
+#    dict_.update{
+#        'tvb': re.findall('(tvb)', text, re.IGNORECASE),
+#        'tvt*b': re.findall('(tvt*b)', text, re.IGNORECASE)
+#    }
 
     return dict_
 
@@ -96,17 +102,15 @@ def export_data(fn, db, start, end):
     log.name('exporter').debug('Exporting data')
     
     ## fieldnames
-    keys_ =  ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute', 'second',
-             'number of words', 'number of characters', 'number of characters without spaces',
-             'k', 'x', 'w'
-            ]
+    keys_ =  SMS_PROPERTIES + TEXT_PROPERTIES + SINGLE_ENTITIES_ELEM + \
+             COMPLEX_ENTITIES_ELEM + ['tvb', 'tvt*b'] #+ EMOTICONS
     
     writer = DictWriter(open(fn, 'w'), fieldnames=keys_, delimiter=',',
                                     quotechar='"', quoting=QUOTE_ALL)
 
     writer.writeheader()
     log.name('exporter').debug('Preparing and saving data')
-    writer.writerows([prepare_data(m) for m in get_data(db, start, end)])
+    writer.writerows([prepare_message_data(m) for m in get_data(db, start, end)])
     log.name('exporter').debug('Data exported and saved into {file_name}', file_name=fn)
 
 
