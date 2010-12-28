@@ -17,7 +17,7 @@
 from datetime import datetime as dt
 from twiggy import log
 from twiggy_setup import twiggy_setup
-from sqlalchemy import *
+
 from sqlalchemy.orm import sessionmaker, mapper
 import re
 
@@ -31,7 +31,40 @@ SMS_PROPERTIES = ['id', 'text', 'date', 'year', 'month', 'day', 'hour', 'minute'
 TEXT_PROPERTIES = ['number of words', 'number of characters', 'number of characters without spaces']
 SINGLE_ENTITIES_ELEM = ['k', 'x', 'w', '!', '?', '+', ',', '.']
 COMPLEX_ENTITIES_ELEM = ['tt', 'nn', 'RTL', '1', '6', '102', 'xk', 'xke', 'cn']
-EMOTICONS = [':)', ':*', ':(', ':p']
+EMOTICONS = {
+    'happy :)': (r':-?[)\]>]', r'=[)\]]', r'\^[_\-.]?\^', 'x\)', r'\(^_^\)'),
+    'sad :(': (r':-?[(\[<]', r'=[(\[]'),
+    'laugh :D': (r':[ -]?D',),
+    'tongue :P': (':-?[pP]', '=[pP]',),
+    'normal :-|': (r':-?\|',),
+    'cool 8-)': (r'8-?\)',),
+}
+
+def build_smile_re(dsmile):
+    out = {}
+    for name, lsmile in dsmile.items():
+        out[name] = re.compile(r'(?: %s)' % (r'| '.join(lsmile)))
+        #print name, r'(?:\s%s)' % (r'|\s'.join(lsmile))
+
+    return out
+
+def find_smiles(text, dict_):
+    """
+    Find smiles in text and returns a dictionary of found smiles
+
+    >>> find_smiles(':) ^^')
+    {'happy': 1}
+    >>> find_smiles(' ^^')
+    {'happy': 1}
+    >>> find_smiles(' :|')
+    {'normal': 1}
+    """
+    res = {}
+
+    re_smile = build_smile_re(dict_)
+
+    return {name: len([1 for match in regex.findall(text) if match]) for name, regex in re_smile.items()}
+
 
 def get_data(db, start, end):
 
@@ -60,12 +93,7 @@ def get_data(db, start, end):
 
 def prepare_message_data(msg):
 
-    ## TODO
-    #    tvb
-    #    tvt***b
-    #    Emoticon: :) :* :( :p
-
-    id_, text, date_ = msg.id, msg.clean_text, msg.date   
+    id_, text, date_ = msg.id, msg.clean_text, msg.date
     
     dict_ = {
         'id': id_,
@@ -90,10 +118,14 @@ def prepare_message_data(msg):
             elem: len(re.findall('(?:^|[^\w\d])(%s)(?=$|[^\w\d])' % (elem,), text, re.I))
         })
 
-#    dict_.update{
-#        'tvb': re.findall('(tvb)', text, re.IGNORECASE),
-#        'tvt*b': re.findall('(tvt*b)', text, re.IGNORECASE)
-#    }
+    dict_.update({
+        'tvb': len(re.findall('(?:^|[^\w\d])(tvt*b+)(?=$|[^\w\d])', text, re.IGNORECASE)),
+    })
+
+    d_smile = find_smiles(text, EMOTICONS)
+
+    if isinstance(d_smile, dict):
+        dict_.update(d_smile)
 
     return dict_
 
@@ -103,7 +135,7 @@ def export_data(fn, db, start, end):
     
     ## fieldnames
     keys_ =  SMS_PROPERTIES + TEXT_PROPERTIES + SINGLE_ENTITIES_ELEM + \
-             COMPLEX_ENTITIES_ELEM + ['tvb', 'tvt*b'] #+ EMOTICONS
+             COMPLEX_ENTITIES_ELEM + ['tvb'] + EMOTICONS.keys()
     
     writer = DictWriter(open(fn, 'w'), fieldnames=keys_, delimiter=',',
                                     quotechar='"', quoting=QUOTE_ALL)
