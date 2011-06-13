@@ -97,7 +97,7 @@ def prepare_message_data(msg):
 
     return dict_
 
-def export_data(fn, db, start, end):
+def export_data(fn, messages):
 
     log.name('exporter').debug('Exporting data')
     
@@ -110,7 +110,7 @@ def export_data(fn, db, start, end):
 
     writer.writeheader()
     log.name('exporter').debug('Preparing and saving data')
-    writer.writerows([prepare_message_data(m) for m in get_data(db, start, end)])
+    writer.writerows([prepare_message_data(m) for m in messages])
     log.name('exporter').debug('Data exported and saved into {file_name}', file_name=fn)
 
 
@@ -142,7 +142,8 @@ def main():
     start = dt.strptime(args.start, df) if args.start else None
     end = dt.strptime(args.end, df) if args.end else None
 
-    export_data(args.file_name, args.db_name, start, end)
+    messages = get_data(args.db_name, start, end)
+    export_data(args.file_name, messages)
     
     log.name('main').info('-------------------- STOP --------------------')
 
